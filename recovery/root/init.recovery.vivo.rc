@@ -1,0 +1,113 @@
+#init.rc for vivo
+
+on init
+    export PATH /sbin:/system/bin
+
+    symlink /sbin/toybox /sbin/cat
+    symlink /sbin/toybox /sbin/ln
+    symlink /sbin/toybox /sbin/ls
+    symlink /sbin/toybox /sbin/mkdir
+    symlink /sbin/vivotool /sbin/ping
+    symlink /sbin/toybox /sbin/ps
+    symlink /sbin/toybox /sbin/grep
+    symlink /sbin/toybox /sbin/chmod
+    symlink /sbin/toybox /sbin/setprop
+    symlink /sbin/toybox /sbin/getprop
+    symlink /sbin/toybox /sbin/setenforce
+    symlink /sbin/toybox /sbin/mount
+    symlink /sbin/toybox /sbin/rm
+
+    mkdir /oem 0771 system system
+    mkdir /otg
+
+    symlink /vendor/lib64/hw/libMcGatekeeper.so   /vendor/lib64/hw/gatekeeper.${ro.hardware}.so
+    symlink /vendor/lib64/hw/libMcTeeKeymaster.so /vendor/lib64/hw/keystore.${ro.hardware}.so
+    symlink /sbin /system/bin
+    symlink /sbin/linker /system/bin/linker
+    symlink /sbin/linker64 /system/bin/linker64
+    symlink /sbin/sh /system/bin/sh
+    symlink /sbin/debuggerd64 /system/bin/debuggerd64
+
+    mkdir /sbin/lib
+    mkdir /sbin/lib64
+    symlink /sbin/lib  /system/lib
+    symlink /sbin/lib64 /system/lib64
+
+    #create mountpoint for /vendor/persist partition 
+    mkdir /vendor/persist 0771 system system
+
+    chmod 0770 /sbin/sh
+
+on post-fs
+    chown system system /vendor/persist
+    chmod 0771 /vendor/persist
+
+    # We restorecon /vendor/persist to set SEPolicy label.
+    restorecon /vendor/persist
+
+    write /proc/bootprof "MOBICORE: Starting mcDriverDaemon"
+    start mobicore
+    # MobiCore Daemon Paths
+    write /proc/bootprof "MOBICORE: export MC_AUTH_TOKEN_PATH /efs"
+    export MC_AUTH_TOKEN_PATH /efs
+
+on post-fs-data
+    # Create /data/key_provisioning dir and get proper encryption policy installed
+    # Key Installation
+    mkdir /data/key_provisioning 0771 system system
+
+on fs
+    #mount ext4 /dev/block/platform/bootdevice/by-name/vendor /vendor rw
+    wait /dev/block/platform/bootdevice/by-name/cust
+    mount ext4 /dev/block/platform/bootdevice/by-name/cust /oem ro
+
+service debuggerd64 /system/bin/debuggerd64
+    group root readproc
+    writepid /dev/cpuset/system-background/tasks
+    seclabel u:r:recovery:s0
+    
+service keymaster-3-0 /sbin/android.hardware.keymaster@3.0-service
+    disabled
+    user root
+    group root drmrpc
+    seclabel u:r:recovery:s0
+
+service gatekeeper-1-0 /sbin/android.hardware.gatekeeper@1.0-service
+    disabled
+    user root
+    group root
+    seclabel u:r:recovery:s0
+
+service servicemanager /sbin/servicemanager
+    disabled
+    user root
+    seclabel u:r:recovery:s0
+
+service hwservicemanager /sbin/hwservicemanager
+    disabled
+    user root
+    onrestart setprop hwservicemanager.ready false
+    onrestart class_restart hal
+    onrestart class_restart early_hal
+    writepid /dev/cpuset/system-background/tasks
+    seclabel u:r:recovery:s0
+
+service logd /sbin/logd
+    socket logd stream 0666 logd logd
+    socket logdr seqpacket 0666 logd logd
+    socket logdw dgram 0222 logd logd
+    seclabel u:r:recovery:s0
+
+on property:recovery.service=1
+    start servicemanager
+    start hwservicemanager
+    start keymaster-3-0
+    start gatekeeper-1-0
+
+# Start Daemon (Registry directories should already be present)
+service mobicore /vendor/bin/mcDriverDaemon --P1 /vendor/persist -r /vendor/app/mcRegistry/020f0000000000000000000000000000.drbin -r /vendor/app/mcRegistry/05120000000000000000000000000000.drbin -r /vendor/app/mcRegistry/070b0000000000000000000000000000.drbin -r /vendor/app/mcRegistry/020b0000000000000000000000000000.drbin -r /vendor/app/mcRegistry/05070000000000000000000000000000.drbin -r /vendor/app/mcRegistry/030b0000000000000000000000000000.drbin -r /vendor/app/mcRegistry/030c0000000000000000000000000000.drbin -r /vendor/app/mcRegistry/07070000000000000000000000000000.drbin  -r /vendor/app/mcRegistry/5020170115e016302017012521300000.drbin -r /vendor/app/mcRegistry/40188311faf343488db888ad39496f9a.drbin
+    user system
+    group system
+    class core
+    oneshot
+    seclabel u:r:recovery:s0
